@@ -62,8 +62,14 @@ fn expr(input: &str) -> S {
 fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S { 
     let mut lhs = match lexer.next() {
         Token::Atom(it) => S::Atom(it),
+        Token::Op(op) => {
+            let ((), r_bp) = prefix_binding_power(op);
+            let rhs = expr_bp(lexer, r_bp);
+            S::Cons(op, vec![rhs])
+        }
         t => panic!("bad token: {:?}", t),
     };
+
     loop {
         let op = match lexer.peek() {
             Token::Eof => break,
@@ -78,13 +84,22 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
         let rhs = expr_bp(lexer, r_bp);
         lhs = S::Cons(op, vec![lhs, rhs]); 
     }
+
     lhs
 }
+
+fn prefix_binding_power(op: char) -> ((), u8) {
+    match op {
+        '+' | '-' => ((), 5),
+        t => panic!("bad op: {:?}", t),
+    }
+}
+
 fn infix_binding_power(op: char) -> (u8, u8) {
     match op {
         '+' | '-' => (1, 2),
         '*' | '/' => (3, 4),
-        '.' => (6, 5),
+        '.' => (8, 7),
         t => panic!("bad op: {:?}", t),
     }
 }

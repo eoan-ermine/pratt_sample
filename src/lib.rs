@@ -62,6 +62,11 @@ fn expr(input: &str) -> S {
 fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S { 
     let mut lhs = match lexer.next() {
         Token::Atom(it) => S::Atom(it),
+        Token::Op('(') => {
+            let lhs = expr_bp(lexer, 0);
+            assert_eq!(lexer.next(), Token::Op(')'));
+            lhs
+        }
         Token::Op(op) => {
             let ((), r_bp) = prefix_binding_power(op);
             let rhs = expr_bp(lexer, r_bp);
@@ -87,15 +92,19 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
             continue;
         }
 
-        let (l_bp, r_bp) = infix_binding_power(op);
-        if l_bp < min_bp { 
-            break;
+        if let Some((l_bp, r_bp)) = infix_binding_power(op) {
+            if l_bp < min_bp { 
+                break;
+            }
+
+            lexer.next(); 
+            let rhs = expr_bp(lexer, r_bp);
+
+            lhs = S::Cons(op, vec![lhs, rhs]); 
+            continue;
         }
 
-        lexer.next(); 
-        let rhs = expr_bp(lexer, r_bp);
-
-        lhs = S::Cons(op, vec![lhs, rhs]); 
+        break;
     }
 
     lhs
@@ -117,13 +126,15 @@ fn postfix_binding_power(op: char) -> Option<(u8, ())> {
     Some(res)
 }
 
-fn infix_binding_power(op: char) -> (u8, u8) {
-    match op {
+fn infix_binding_power(op: char) -> Option<(u8, u8)> {
+    let res = match op {
         '+' | '-' => (1, 2),
         '*' | '/' => (3, 4),
         '.' => (10, 9),
-        t => panic!("bad op: {:?}", t),
-    }
+        _ => return None,
+    };
+
+    Some(res)
 }
 #[test]
 fn tests() {
@@ -153,4 +164,7 @@ fn tests() {
 
     let s = expr("f . g !");
     assert_eq!(s.to_string(), "(! (. f g))");
+
+    let s = expr("(((0)))");
+    assert_eq!(s.to_string(), "0");
 }

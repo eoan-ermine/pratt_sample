@@ -1,6 +1,6 @@
 use std::fmt;
 
-enum S {
+pub enum S {
     Atom(char),
     Cons(char, Vec<S>),
 }
@@ -55,7 +55,7 @@ impl Lexer {
     }
 }
 
-fn expr(input: &str) -> S {
+pub fn expr(input: &str) -> S {
     let mut lexer = Lexer::new(input);
     expr_bp(&mut lexer, 0) 
 }
@@ -88,7 +88,14 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
             }
             lexer.next();
 
-            lhs = S::Cons(op, vec![lhs]);
+            lhs = if op == '[' {
+                let rhs = expr_bp(lexer, 0);
+                assert_eq!(lexer.next(), Token::Op(']'));
+                S::Cons(op, vec![lhs, rhs])
+            } else {
+                S::Cons(op, vec![lhs])
+            };
+
             continue;
         }
 
@@ -96,11 +103,18 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
             if l_bp < min_bp { 
                 break;
             }
-
             lexer.next(); 
-            let rhs = expr_bp(lexer, r_bp);
 
-            lhs = S::Cons(op, vec![lhs, rhs]); 
+            lhs = if op == '?' {
+                let mhs = expr_bp(lexer, 0);
+                assert_eq!(lexer.next(), Token::Op(':'));
+                let rhs = expr_bp(lexer, r_bp);
+                S::Cons(op, vec![lhs, mhs, rhs])
+            } else {
+                let rhs = expr_bp(lexer, r_bp);
+                S::Cons(op, vec![lhs, rhs])
+            };
+
             continue;
         }
 
@@ -112,14 +126,14 @@ fn expr_bp(lexer: &mut Lexer, min_bp: u8) -> S {
 
 fn prefix_binding_power(op: char) -> ((), u8) {
     match op {
-        '+' | '-' => ((), 5),
+        '+' | '-' => ((), 9),
         t => panic!("bad op: {:?}", t),
     }
 }
 
 fn postfix_binding_power(op: char) -> Option<(u8, ())> {
     let res = match op {
-        '!' => (7, ()),
+        '!' | '[' => (11, ()),
         _ => return None,
     };
 
@@ -128,9 +142,11 @@ fn postfix_binding_power(op: char) -> Option<(u8, ())> {
 
 fn infix_binding_power(op: char) -> Option<(u8, u8)> {
     let res = match op {
-        '+' | '-' => (1, 2),
-        '*' | '/' => (3, 4),
-        '.' => (10, 9),
+        '=' => (2, 1),
+        '?' => (4, 3),
+        '+' | '-' => (5, 6),
+        '*' | '/' => (7, 8),
+        '.' => (14, 13),
         _ => return None,
     };
 
@@ -167,4 +183,17 @@ fn tests() {
 
     let s = expr("(((0)))");
     assert_eq!(s.to_string(), "0");
+
+    let s = expr("x[0][1]");
+    assert_eq!(s.to_string(), "([ ([ x 0) 1)");
+
+    let s = expr(
+        "a ? b :
+         c ? d
+         : e",
+    );
+    assert_eq!(s.to_string(), "(? a b (? c d e))");
+
+    let s = expr("a = 0 ? b : c = d");
+    assert_eq!(s.to_string(), "(= a (= (? 0 b c) d))")
 }
